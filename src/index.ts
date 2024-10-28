@@ -6,6 +6,7 @@ import morgan from 'morgan';
 import { dbConnect } from './utils/dbConnect';
 import authRoutes from './routes/userRoutes';
 import categoryRoutes from './routes/categoryRoutes';
+import productRoutes from './routes/productRoutes';
 
 const app: Express = express();
 
@@ -19,6 +20,7 @@ app.use(morgan('dev'));
 
 app.use('/api/auth', authRoutes);
 app.use('/api/categories', categoryRoutes);
+app.use('/api/products', productRoutes);
 
 // Routes
 app.get('/', (req: Request, res: Response) => {
