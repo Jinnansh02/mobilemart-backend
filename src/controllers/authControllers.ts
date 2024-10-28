@@ -63,13 +63,14 @@ export const signup = async (req: Request, res: Response): Promise<void> => {
 
     const token = generateToken(user);
     res.status(201).json({
-      token,
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-      },
+      message: 'Signup successful, you can login now',
+      // token,
+      // user: {
+      //   id: user.id,
+      //   name: user.name,
+      //   email: user.email,
+      //   role: user.role,
+      // },
     });
   } catch (error) {
     res.status(500).json({ message: 'Error creating user', error });

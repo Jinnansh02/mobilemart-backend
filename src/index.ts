@@ -5,6 +5,7 @@ import cors from 'cors';
 import morgan from 'morgan';
 import { dbConnect } from './utils/dbConnect';
 import authRoutes from './routes/userRoutes';
+import categoryRoutes from './routes/categoryRoutes';
 
 const app: Express = express();
 
@@ -17,6 +18,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use(morgan('dev'));
 
 app.use('/api/auth', authRoutes);
+app.use('/api/categories', categoryRoutes);
 
 // Routes
 app.get('/', (req: Request, res: Response) => {
