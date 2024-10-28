@@ -1,12 +1,14 @@
+import dotenv from 'dotenv';
+dotenv.config();
 import express, { Express, Request, Response } from 'express';
-import mongoose from 'mongoose';
 import cors from 'cors';
 import morgan from 'morgan';
-import dotenv from 'dotenv';
-
-dotenv.config();
+import { dbConnect } from './utils/dbConnect';
+import authRoutes from './routes/userRoutes';
 
 const app: Express = express();
+
+dbConnect();
 
 // Middleware
 app.use(cors());
@@ -14,20 +16,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan('dev'));
 
-// MongoDB connection
-const connectDB = async (): Promise<void> => {
-  try {
-    const mongoURI: string =
-      process.env.MONGODB_URI || 'mongodb://localhost:27017/mobilemart';
-    await mongoose.connect(mongoURI);
-    console.log('Connected to MongoDB');
-  } catch (err) {
-    console.error('MongoDB connection error:', err);
-    process.exit(1);
-  }
-};
-
-connectDB();
+app.use('/api/auth', authRoutes);
 
 // Routes
 app.get('/', (req: Request, res: Response) => {
