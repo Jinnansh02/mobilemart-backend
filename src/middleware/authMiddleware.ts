@@ -33,7 +33,7 @@ export const isAdmin = (
   req: AuthRequest,
   res: Response,
   next: NextFunction
-) => {
+): any => {
   if (!req.user?.role.includes('admin')) {
     return res.status(403).json({ message: 'Admin access required' });
   }
