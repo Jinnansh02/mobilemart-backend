@@ -1,5 +1,16 @@
-// models/Order.ts
 import mongoose, { Document, Schema } from 'mongoose';
+
+export enum OrderStatus {
+  PENDING = 'pending',
+  PROCESSING = 'processing',
+  CONFIRMED = 'confirmed',
+  SHIPPED = 'shipped',
+  OUT_FOR_DELIVERY = 'out_for_delivery',
+  DELIVERED = 'delivered',
+  CANCELLED = 'cancelled',
+  RETURNED = 'returned',
+  REFUNDED = 'refunded',
+}
 
 export interface IOrder extends Document {
   user: mongoose.Types.ObjectId;
@@ -37,6 +48,12 @@ export interface IOrder extends Document {
   isDelivered: boolean;
   deliveredAt?: Date;
   stripeSessionId?: string;
+  status: OrderStatus;
+  statusHistory: Array<{
+    status: OrderStatus;
+    timestamp: Date;
+    comment?: string;
+  }>;
 }
 
 const orderSchema = new Schema<IOrder>(
@@ -119,10 +136,44 @@ const orderSchema = new Schema<IOrder>(
     stripeSessionId: {
       type: String,
     },
+    status: {
+      type: String,
+      enum: Object.values(OrderStatus),
+      default: OrderStatus.PENDING,
+      required: true,
+    },
+    statusHistory: [
+      {
+        status: {
+          type: String,
+          enum: Object.values(OrderStatus),
+          required: true,
+        },
+        timestamp: {
+          type: Date,
+          default: Date.now,
+          required: true,
+        },
+        comment: {
+          type: String,
+        },
+      },
+    ],
   },
   {
     timestamps: true,
   }
 );
+
+// Middleware to automatically update statusHistory when status changes
+orderSchema.pre('save', function (next) {
+  if (this.isModified('status')) {
+    this.statusHistory.push({
+      status: this.status,
+      timestamp: new Date(),
+    });
+  }
+  next();
+});
 
 export default mongoose.model<IOrder>('Order', orderSchema);

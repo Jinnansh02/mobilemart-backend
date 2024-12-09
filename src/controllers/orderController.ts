@@ -1,7 +1,7 @@
 // controllers/orderController.ts
 import { Request, Response } from 'express';
 import asyncHandler from 'express-async-handler';
-import Order from '../models/OrderModel';
+import Order, { OrderStatus } from '../models/OrderModel';
 import Stripe from 'stripe';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
@@ -10,11 +10,57 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
 
 interface AuthRequest extends Request {
   user?: {
-    // _id: string;
     id: string;
     email: string;
+    isAdmin?: boolean;
   };
 }
+
+export const checkOrderPaymentStatus = asyncHandler(
+  async (req: AuthRequest, res: Response): Promise<any> => {
+    const orderId = req.params.id;
+
+    const order = await Order.findById(orderId);
+
+    if (!order) {
+      res.status(404);
+      throw new Error('Order not found');
+    }
+
+    // If order is already paid, return the order
+    if (order.isPaid) {
+      return res.json(order);
+    }
+
+    try {
+      // Retrieve the Stripe session to check its status
+      const session = await stripe.checkout.sessions.retrieve(
+        order.stripeSessionId!
+      );
+
+      // If payment is successful, update the order
+      if (session.payment_status === 'paid') {
+        order.isPaid = true;
+        order.paidAt = new Date();
+        order.status = OrderStatus.PROCESSING;
+        order.paymentResult = {
+          id: session.id,
+          status: session.payment_status,
+          update_time: new Date().toISOString(),
+          email_address: session.customer_details?.email || '',
+        };
+
+        const updatedOrder = await order.save();
+        res.json(updatedOrder);
+      } else {
+        res.json(order); // Return original order if payment is not completed
+      }
+    } catch (error: any) {
+      res.status(400);
+      throw new Error('Error checking payment status: ' + error.message);
+    }
+  }
+);
 
 // Create new order and Stripe checkout session
 export const createOrder = asyncHandler(
@@ -50,6 +96,7 @@ export const createOrder = asyncHandler(
         taxPrice,
         shippingPrice,
         totalPrice,
+        status: OrderStatus.PENDING,
       });
 
       // Create Stripe checkout session
@@ -57,7 +104,7 @@ export const createOrder = asyncHandler(
         payment_method_types: ['card'],
         customer_email: req.user.email,
         mode: 'payment',
-        success_url: `${process.env.FRONTEND_URL}/order-success?orderId=${order._id}`,
+        success_url: `${process.env.FRONTEND_URL}/order-success/${order._id}`,
         cancel_url: `${process.env.FRONTEND_URL}/checkout`,
         line_items: orderItems.map((item: any) => ({
           price_data: {
@@ -85,7 +132,6 @@ export const createOrder = asyncHandler(
         sessionUrl: session.url,
       });
     } catch (error: any) {
-      //
       console.log('Create order error');
       console.log(error.message);
       res.status(400).json({
@@ -124,6 +170,7 @@ export const stripeWebhook = asyncHandler(
         if (order) {
           order.isPaid = true;
           order.paidAt = new Date();
+          order.status = OrderStatus.PROCESSING;
           order.paymentResult = {
             id: session.id,
             status: session.payment_status,
@@ -159,7 +206,47 @@ export const getOrderById = asyncHandler(
   }
 );
 
-// Update order to delivered
+// Update order status
+export const updateOrderStatus = asyncHandler(
+  async (req: AuthRequest, res: Response) => {
+    const { status, comment } = req.body;
+
+    const order = await Order.findById(req.params.id);
+
+    if (!order) {
+      res.status(404);
+      throw new Error('Order not found');
+    }
+
+    // Validate status
+    if (!Object.values(OrderStatus).includes(status)) {
+      res.status(400);
+      throw new Error('Invalid order status');
+    }
+
+    order.status = status;
+
+    // Update delivered status if applicable
+    if (status === OrderStatus.DELIVERED) {
+      order.isDelivered = true;
+      order.deliveredAt = new Date();
+    }
+
+    // Add comment to status history if provided
+    if (comment) {
+      order.statusHistory.push({
+        status,
+        comment,
+        timestamp: new Date(),
+      });
+    }
+
+    const updatedOrder = await order.save();
+    res.json(updatedOrder);
+  }
+);
+
+// Update order to delivered (legacy support)
 export const updateOrderToDelivered = asyncHandler(
   async (req: Request, res: Response) => {
     const order = await Order.findById(req.params.id);
@@ -167,6 +254,7 @@ export const updateOrderToDelivered = asyncHandler(
     if (order) {
       order.isDelivered = true;
       order.deliveredAt = new Date();
+      order.status = OrderStatus.DELIVERED;
       const updatedOrder = await order.save();
       res.json(updatedOrder);
     } else {
@@ -180,6 +268,14 @@ export const updateOrderToDelivered = asyncHandler(
 export const getMyOrders = asyncHandler(
   async (req: AuthRequest, res: Response) => {
     const orders = await Order.find({ user: req.user?.id });
+    res.json(orders);
+  }
+);
+
+// Get all orders (admin only)
+export const getAllOrders = asyncHandler(
+  async (req: AuthRequest, res: Response) => {
+    const orders = await Order.find({}).populate('user', 'id name email');
     res.json(orders);
   }
 );
